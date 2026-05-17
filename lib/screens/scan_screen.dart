@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -22,7 +23,17 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   void initState() {
     super.initState();
-    _requestPermissions();
+    if (Platform.isAndroid || Platform.isIOS) {
+      _requestPermissions();
+    } else {
+      // En escritorio: ir directo al dashboard en modo DEMO
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => DashboardScreen(obdService: ObdService())),
+        );
+      });
+    }
   }
 
   Future<void> _requestPermissions() async {

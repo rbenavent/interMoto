@@ -94,7 +94,7 @@ class ObdService {
   bool get isConnected => _device != null;
 
   Future<void> connect(BluetoothDevice device) async {
-    await device.connect(autoConnect: false);
+    await device.connect(license: License.free, autoConnect: false);
     _device = device;
 
     final services = await device.discoverServices();
