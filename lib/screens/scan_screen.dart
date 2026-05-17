@@ -15,6 +15,8 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   final List<ScanResult> _results = [];
   bool _scanning = false;
+  bool _connecting = false;
+  String? _connectingId;
   StreamSubscription? _scanSub;
 
   @override
@@ -46,15 +48,18 @@ class _ScanScreenState extends State<ScanScreen> {
             _results.add(r);
           }
         }
+        _results.sort((a, b) => b.rssi.compareTo(a.rssi));
       });
     });
 
     await Future.delayed(const Duration(seconds: 10));
     await FlutterBluePlus.stopScan();
-    setState(() => _scanning = false);
+    if (mounted) setState(() => _scanning = false);
   }
 
   Future<void> _connect(BluetoothDevice device) async {
+    setState(() { _connecting = true; _connectingId = device.remoteId.toString(); });
+
     final obd = ObdService();
     try {
       await obd.connect(device);
@@ -65,8 +70,12 @@ class _ScanScreenState extends State<ScanScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() { _connecting = false; _connectingId = null; });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al conectar: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error al conectar: $e'),
+          backgroundColor: const Color(0xFF3a0000),
+        ),
       );
     }
   }
@@ -83,22 +92,30 @@ class _ScanScreenState extends State<ScanScreen> {
       backgroundColor: const Color(0xFF0a0a0a),
       appBar: AppBar(
         backgroundColor: const Color(0xFF111111),
-        title: const Text('interMoto', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
+        title: const Text(
+          'interMoto',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2),
+        ),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
+          const Icon(Icons.motorcycle, color: Color(0xFF333333), size: 64),
+          const SizedBox(height: 16),
           const Text(
-            'Busca el adaptador OBD-BLE\nde tu Kawasaki Versys 650',
+            'Conecta al adaptador OBD-II BLE\nde tu Kawasaki Versys 650',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF888888), fontSize: 15),
+            style: TextStyle(color: Color(0xFF666666), fontSize: 14, height: 1.5),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           ElevatedButton.icon(
-            onPressed: _scanning ? null : _startScan,
+            onPressed: (_scanning || _connecting) ? null : _startScan,
             icon: _scanning
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                ? const SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                  )
                 : const Icon(Icons.bluetooth_searching),
             label: Text(_scanning ? 'Buscando...' : 'Buscar dispositivos'),
             style: ElevatedButton.styleFrom(
@@ -114,32 +131,56 @@ class _ScanScreenState extends State<ScanScreen> {
                 ? Center(
                     child: Text(
                       _scanning ? '' : 'Pulsa "Buscar dispositivos"',
-                      style: const TextStyle(color: Color(0xFF444444)),
+                      style: const TextStyle(color: Color(0xFF333333)),
                     ),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _results.length,
                     itemBuilder: (_, i) {
-                      final r = _results[i];
+                      final r    = _results[i];
                       final name = r.device.platformName.isEmpty ? 'Sin nombre' : r.device.platformName;
+                      final id   = r.device.remoteId.toString();
                       final isObd = name.toLowerCase().contains('obd') ||
                           name.toLowerCase().contains('elm') ||
                           name.toLowerCase().contains('veepeak') ||
-                          name.toLowerCase().contains('obdlink');
+                          name.toLowerCase().contains('obdlink') ||
+                          name.toLowerCase().contains('vlink') ||
+                          name.toLowerCase().contains('kw902');
+                      final isConnecting = _connectingId == id;
+
                       return Card(
-                        color: const Color(0xFF1a1a1a),
+                        color: isObd ? const Color(0xFF0a1a0a) : const Color(0xFF1a1a1a),
                         margin: const EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isObd ? const Color(0xFF00e676).withAlpha(80) : const Color(0xFF222222),
+                          ),
+                        ),
                         child: ListTile(
                           leading: Icon(
                             Icons.bluetooth,
                             color: isObd ? const Color(0xFF00e676) : const Color(0xFF444444),
                           ),
                           title: Text(name, style: const TextStyle(color: Colors.white)),
-                          subtitle: Text(r.device.remoteId.toString(),
-                              style: const TextStyle(color: Color(0xFF555555), fontSize: 12)),
-                          trailing: Text('${r.rssi} dBm', style: const TextStyle(color: Color(0xFF666666))),
-                          onTap: () => _connect(r.device),
+                          subtitle: Text(id, style: const TextStyle(color: Color(0xFF555555), fontSize: 12)),
+                          trailing: isConnecting
+                              ? const SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00e676)),
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('${r.rssi} dBm', style: const TextStyle(color: Color(0xFF555555), fontSize: 12)),
+                                    if (isObd) ...[
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.check_circle, color: Color(0xFF00e676), size: 16),
+                                    ],
+                                  ],
+                                ),
+                          onTap: (_connecting) ? null : () => _connect(r.device),
                         ),
                       );
                     },
